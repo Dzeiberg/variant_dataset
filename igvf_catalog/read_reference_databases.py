@@ -10,7 +10,7 @@ import os
 import joblib
 from igvf_catalog.data_utils import Protein, Variant
 from Bio.PDB.Polypeptide import protein_letters_3to1
-
+logging.basicConfig(filename='/home/dzeiberg/igvf_catalog/log.txt', encoding='utf-8', level=logging.DEBUG)
 server = "https://rest.ensembl.org"
 ext = "/archive/id"
 headers={ "Content-Type" : "application/json", "Accept" : "application/json"}
@@ -30,21 +30,9 @@ def read_gnomad(path="/data/dbs/gnomad/v2_liftover/gnomad.exomes.r2.1.1.sites.mi
 def read_gnomad_and_ensembl(path="/data/dbs/gnomad/v2_liftover/gnomad.exomes.r2.1.1.sites.missense.PASS.pkl",
                 ensemble_path="/data/dbs/ensembl/Homo_sapiens.GRCh38.pep.all.fa.gz",
                 cached_ensembl_file="/home/dzeiberg/igvf_catalog/ensembl_records.pkl"):
-    residues = set(protein_letters_3to1.values())
     gnomad = read_gnomad(path)
    
     ensembl_records = read_gzip_fasta(ensemble_path)
-    # protein_ids_in_gnomad = set(gnomad.HGVSp.str.split(":").str[0].values)
-    # missing_ids = set(protein_ids_in_gnomad) - set(ensembl_records.keys())
-    # n_queries = 1 + (len(missing_ids) // 1000)
-    # for subset in tqdm(np.array_split(list(missing_ids), n_queries),total=n_queries):
-    #     r = requests.post(server+ext, headers=headers, data=repr({"id":list(map(lambda s: s.split(".")[0],subset))}).replace("\'","\""))
-    #     for query, hit in zip(subset,r.json()):
-    #         seq = hit['peptide']
-    #         if seq is None or any([r not in residues for r in seq]):
-    #             raise ValueError(f'could not match {query}\n{hit}')
-    #         ensembl_records[query] = hit['peptide']
-    #         logging.warning(f">{query}\n{hit['peptide']}\n")
     gnomad = gnomad[gnomad.HGVSp != "."]
     return gnomad, ensembl_records
 
@@ -79,12 +67,21 @@ def process_gnomad(gnomad_df : DataFrame, ensembl_records : dict):
     return gnomad_proteins
 
 def process_clinvar(clinvar_pickle_path="/data/dbs/clinvar/clinvar_12_13_2023/variant_summary_annotated.pkl",
-                    mane_fasta_path="/data/dbs/mane/MANE.GRCh38.v1.1.refseq_protein.faa.gz"):
+                    mane_fasta_path="/data/dbs/mane/MANE.GRCh38.v1.1.refseq_protein.faa.gz",
+                    mane_summary_path="/data/dbs/mane/MANE.GRCh38.v1.1.summary.txt"):
     clinvar_df = pd.read_pickle(clinvar_pickle_path)
     mane_records = read_gzip_fasta(mane_fasta_path)
+    mane_summary = pd.read_csv(mane_summary_path,sep="\t")
+    mane_summary = mane_summary[mane_summary.MANE_status == "MANE Select"].set_index("symbol")
     clinvar_proteins = dict()
-    for refseq_prot_id, variants in clinvar_df.groupby("MANE_RefSeq_prot"):
-        protein = Protein(refseq_prot_id, mane_records[refseq_prot_id])
+    grouped = clinvar_df.groupby("GeneSymbol")
+    for gene_symbol, variants in tqdm(grouped, total=len(grouped)):
+        try:
+            canonical_RefSeq_prot = mane_summary.loc[gene_symbol.upper()].RefSeq_prot
+            protein = Protein(gene_symbol, mane_records[canonical_RefSeq_prot])
+        except KeyError as e:
+            logging.warning(f"Skipping protein {gene_symbol}: {e}")
+            continue
         for _, row in variants.iterrows():
             try:
                 variant = Variant(protein,protein_letters_3to1[row["wt_aa"].upper()],
@@ -96,5 +93,5 @@ def process_clinvar(clinvar_pickle_path="/data/dbs/clinvar/clinvar_12_13_2023/va
             for annotation_name,annotation_value in row.items():
                 variant.add_annotation("clinvar20231213_" + annotation_name, annotation_value)
             protein.add_variant(variant)
-        clinvar_proteins[Protein.sequence_hash] = protein
+        clinvar_proteins[protein.sequence_hash] = protein
     return clinvar_proteins

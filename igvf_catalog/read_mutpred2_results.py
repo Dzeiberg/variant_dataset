@@ -17,7 +17,9 @@ import numpy as np
 import joblib
 import pandas as pd
 import logging
-from data_utils import Protein, Variant
+from igvf_catalog.data_utils import Protein, Variant
+logging.basicConfig(filename='/home/dzeiberg/igvf_catalog/log.txt', encoding='utf-8', level=logging.DEBUG)
+
 
 @contextlib.contextmanager
 def tqdm_joblib(tqdm_object):

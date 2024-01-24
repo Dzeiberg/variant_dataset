@@ -10,7 +10,7 @@ class Protein(object):
         self.id = id
         self.sequence = sequence
         self.length = len(sequence)
-        self.variants = []
+        self.variants = dict()
         self.existing_substitution_set = set()
 
     def get_missing_variants(self):
@@ -31,7 +31,7 @@ class Protein(object):
         substitution_str = variant.aa_ref+str(variant.aa_pos)+variant.aa_alt
         if substitution_str in self.existing_substitution_set:
             return
-        self.variants.append(variant)
+        self.variants[substitution_str] = variant
         self.existing_substitution_set.add(substitution_str)
 
     def __repr__(self):
@@ -59,6 +59,10 @@ class Variant(object):
     def add_feature_vec(self, feature_vec):
         self._feature_vec = feature_vec.reshape((1,-1))
     
+    @property
+    def substitution_str(self):
+        return f"{self.aa_ref}{self.aa_pos}{self.aa_alt}"
+
     def __repr__(self):
         return f"PROTEIN{self.protein.id}:{self.aa_ref}{self.aa_pos}{self.aa_alt}"
 
@@ -111,3 +115,84 @@ def process_results(results, existing_proteins=None):
         if new_protein:
             existing_proteins[protein.sequence_hash] = protein
     return existing_proteins
+
+
+class Labeler:
+    def __init__(self,clinvar,gnomad):
+        self.clinvar = clinvar
+        self.gnomad = gnomad
+
+    def label_variant(self,variant : Variant):
+        status = "not present"
+        clinvar_status = self.get_clinvar_status(variant)
+        is_valid_gnomad_variant = self.check_gnomad_status(variant)
+        if clinvar_status != "clinvar other/not present":
+            status = clinvar_status
+        elif is_valid_gnomad_variant:
+            status = "gnomad"
+        return status
+        
+
+    def get_clinvar_status(self,variant : Variant):
+        status = 'clinvar other/not present'
+        try:
+            p = self.clinvar[variant.protein.sequence_hash]
+        except KeyError:
+            # protein not found in clinvar
+            return status
+        try:
+            v = p.variants[variant.substitution_str]
+        except KeyError:
+            # variant not found in clinvar protein
+            return status
+        clinsig = v.get_annotation("clinvar20231213_ClinicalSignificance")
+        sufficient_star_rating = v.get_annotation("clinvar20231213_star_rating") >= 1
+        if sufficient_star_rating and clinsig in ["Pathogenic","Likely pathogenic", "Pathogenic/Likely pathogenic"]:
+            return "P/LP"
+        elif sufficient_star_rating and clinsig in ["Benign","Likely benign", "Benign/Likely benign"]:
+            return "B/LB"
+        elif clinsig in ["Uncertain significance"]:
+            return "VUS"
+        return status
+
+
+    def check_gnomad_status(self,variant : Variant):
+        try:
+            p = self.gnomad[variant.protein.sequence_hash]
+        except KeyError:
+            # protein not found in gnomad
+            return False
+        try:
+            v = p.variants[variant.substitution_str]
+        except KeyError:
+            # variant not found in gnomad protein
+            return False
+        if float(v.get_annotation("gnomad_v211_qual")) > 20 and v.get_annotation("gnomad_v211_filter") == "PASS":
+            return True
+        return False
+
+class Dataset:
+    def __init__(self,variants=None):
+        if variants is None:
+            self.variants = []
+        else:
+            self.variants = variants
+    
+    def add_variant(self,variant : Variant):
+        self.variants.append(variant)
+
+    @property
+    def feature_vecs(self):
+        return np.concatenate([v.get_feature_vec() for v in self.variants],axis=0)
+
+    @property
+    def labels(self):
+        return np.array([v.get_annotation("my_label") for v in self.variants])
+
+    @property
+    def sequence_hashes(self):
+        return np.array([v.protein.sequence_hash for v in self.variants])
+
+    @property
+    def substitution_strs(self):
+        return np.array([v.substitution_str for v in self.variants])
