@@ -8,7 +8,7 @@ import numpy as np
 from tqdm import tqdm
 import os
 import joblib
-from igvf_catalog.data_utils import Protein, Variant
+from variant_dataset.data_utils import Protein, Variant
 from Bio.PDB.Polypeptide import protein_letters_3to1
 logging.basicConfig(filename='/home/dzeiberg/variant_dataset/log.txt', encoding='utf-8', level=logging.DEBUG)
 server = "https://rest.ensembl.org"

@@ -1,6 +1,6 @@
-from igvf_catalog.data_utils import Protein, Variant, Dataset, Labeler
-from igvf_catalog.read_reference_databases import process_clinvar, process_gnomad, read_gnomad_and_ensembl
-from igvf_catalog.read_mutpred2_results import read_mutpred2_results
+from variant_dataset.data_utils import Protein, Variant, Dataset, Labeler
+from variant_dataset.read_reference_databases import process_clinvar, process_gnomad, read_gnomad_and_ensembl
+from variant_dataset.read_mutpred2_results import read_mutpred2_results
 from pathlib import Path
 from tqdm import tqdm
 import logging
