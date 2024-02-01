@@ -126,7 +126,7 @@ class Labeler:
         status = "not present"
         clinvar_status = self.get_clinvar_status(variant)
         is_valid_gnomad_variant = self.check_gnomad_status(variant)
-        if clinvar_status != "clinvar other/not present":
+        if clinvar_status not in set(("clinvar other/not present","VUS")):
             status = clinvar_status
         elif is_valid_gnomad_variant:
             status = "gnomad"

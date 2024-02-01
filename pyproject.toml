@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "igvf-catalog"
+name = "variant_dataset"
 version = "0.1.0"
 description = ""
 authors = ["Daniel Zeiberg <zeiberg.d@northeastern.edu>"]

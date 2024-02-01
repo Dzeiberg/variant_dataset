@@ -10,7 +10,7 @@ import os
 import joblib
 from igvf_catalog.data_utils import Protein, Variant
 from Bio.PDB.Polypeptide import protein_letters_3to1
-logging.basicConfig(filename='/home/dzeiberg/igvf_catalog/log.txt', encoding='utf-8', level=logging.DEBUG)
+logging.basicConfig(filename='/home/dzeiberg/variant_dataset/log.txt', encoding='utf-8', level=logging.DEBUG)
 server = "https://rest.ensembl.org"
 ext = "/archive/id"
 headers={ "Content-Type" : "application/json", "Accept" : "application/json"}
@@ -23,18 +23,46 @@ def read_gzip_fasta(path):
             records[record.id] = str(record.seq)
     return records
 
-def read_gnomad(path="/data/dbs/gnomad/v2_liftover/gnomad.exomes.r2.1.1.sites.missense.PASS.pkl"):
+def read_gnomad(path="/data/dzeiberg/gene_calibration/gnomad.genomes_and_exomes.r2.1.1.sites.pkl"):
     gnomad = pd.read_pickle(path)
     return gnomad
 
-def read_gnomad_and_ensembl(path="/data/dbs/gnomad/v2_liftover/gnomad.exomes.r2.1.1.sites.missense.PASS.pkl",
+def read_gnomad_and_ensembl(path="/data/dzeiberg/gene_calibration/gnomad.genomes_and_exomes.r2.1.1.sites.pkl",
                 ensemble_path="/data/dbs/ensembl/Homo_sapiens.GRCh38.pep.all.fa.gz",
-                cached_ensembl_file="/home/dzeiberg/igvf_catalog/ensembl_records.pkl"):
+                cached_ensembl_file="/home/dzeiberg/variant_dataset/ensembl_records.pkl"):
     gnomad = read_gnomad(path)
    
     ensembl_records = read_gzip_fasta(ensemble_path)
     gnomad = gnomad[gnomad.HGVSp != "."]
     return gnomad, ensembl_records
+
+def load_preprocessed_gnomad(gnomad_path="/data/dzeiberg/gene_calibration/vikas_calibration_gnomad_dataset.pkl",
+                                ensemble_path="/data/dbs/ensembl/Homo_sapiens.GRCh38.pep.all.fa.gz"):
+    gnomad = pd.read_pickle(gnomad_path)
+    ensembl = read_gzip_fasta(ensemble_path)
+    grouped = gnomad.groupby("Ensembl_proteinid_latest")
+    proteins = {}
+    for ensembl_transcript_id,variants in tqdm(grouped,total=len(grouped)):
+        try:
+            wt_seq = ensembl[ensembl_transcript_id]
+        except KeyError:
+            continue
+        protein = Protein(ensembl_transcript_id, wt_seq)
+        for _,row in variants.iterrows():
+            aa_ref = row.aavar[0]
+            aa_pos = int(row.aavar[1:-1])
+            aa_alt = row.aavar[-1]
+            try:
+                variant = Variant(protein,aa_ref, aa_pos, aa_alt)
+            except ValueError as e:
+                print(e)
+                continue
+            for k,v in row.items():
+                variant.add_annotation(k,v)
+            protein.add_variant(variant)
+        proteins[protein.sequence_hash] = protein
+    return proteins
+
 
 def process_gnomad(gnomad_df : DataFrame, ensembl_records : dict):
     gnomad_proteins = dict()
