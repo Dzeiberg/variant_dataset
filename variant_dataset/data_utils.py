@@ -265,7 +265,7 @@ class JobProcessor:
     def process_job(self,job_dir):
         features = loadmat(job_dir / "output.txt.feats_1.mat")['feats']
         substitutions = loadmat(job_dir / "output.txt.substitutions.mat")['substitutions']
-        substitutions = [a.item().strip() for a in subs['substitutions'].item().ravel()]
+        substitutions = [a.item().strip() for a in substitutions.item().ravel()]
         sequence = loadmat(job_dir / 'output.txt.sequences.mat')['sequences'].item().item()
         sequence_hash = Protein.get_md5_hash(sequence)
         if sequence_hash not in self.feature_sets:
