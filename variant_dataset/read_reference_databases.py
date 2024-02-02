@@ -112,14 +112,31 @@ def process_clinvar(clinvar_variant_summary,mane_summary,mane_records, disease_g
         clinvar_proteins[protein.sequence_hash] = protein
     return clinvar_proteins
 
+def clinvar_pathogenicity_status(row,pathogenic_or_benign):
+    if pathogenic_or_benign == "pathogenic":
+        return row.ClinicalSignificance in ["Pathogenic","Likely pathogenic", "Pathogenic/Likely pathogenic"] and \
+            row.ReviewStatus not in {'no clasification provided', 'no assertion criteria provided','no classification for the single variant'}
+
+    elif pathogenic_or_benign == 'benign':
+        return row.ClinicalSignificance in ["Benign", "Likely benign", "Benign/Likely benign"] and \
+            row.ReviewStatus not in {'no clasification provided', 'no assertion criteria provided','no classification for the single variant'}
+    else:
+        raise ValueError()
+
 def get_disease_genes(clinvar_variant_summary, mane_summary):
-    
-    disease_variants = clinvar_variant_summary[(clinvar_variant_summary.ClinicalSignificance.isin(["Pathogenic","Likely pathogenic", "Pathogenic/Likely pathogenic"])) & \
-                                               (~clinvar_variant_summary.ReviewStatus.isin({'no clasification provided', 'no assertion criteria provided','no classification for the single variant'}))]
+    disease_variants = clinvar_variant_summary[clinvar_variant_summary.is_pathogenic]
     disease_variants = disease_variants.assign(GeneID = disease_variants.GeneID.astype(str))
     disease_genes = mane_summary[mane_summary.GeneID.isin(disease_variants.GeneID)]
     return disease_genes
     
+def remove_clinvar_pathogenic_and_benign_from_gnomad(clinvar_proteins, gnomad_proteins):
+    for seq_hash,p in gnomad_proteins.items():
+        if seq_hash in clinvar_proteins:
+            for substitution_str in clinvar_proteins[seq_hash].variants:
+                if substitution_str in p.variants and \
+                    (clinvar_proteins[seq_hash].variants[substitution_str].is_pathogenic or \
+                        clinvar_proteins[seq_hash].variants[substitution_str].is_benign):
+                    p.variants.pop(substitution_str)
 
 def read_steps(*args, **kwargs):
     """
@@ -130,6 +147,8 @@ def read_steps(*args, **kwargs):
     gnomad_header_file : str : path to column names in the gnomad files
     """
     clinvar_variant_summary = pd.read_csv("https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz",delimiter="\t",compression='gzip')
+    clinvar_variant_summary = clinvar_variant_summary.assign(is_pathogenic=clinvar_variant_summary.apply(lambda row: clinvar_pathogenicity_status(row,'pathogenic'),axis=1),
+                                                                is_benign=clinvar_variant_summary.apply(lambda row: clinvar_pathogenicity_status(row,'benign'),axis=1))
 
     mane_summary = pd.read_csv("https://ftp.ncbi.nlm.nih.gov/refseq/MANE/MANE_human/release_1.2/MANE.GRCh38.v1.2.summary.txt.gz",compression='gzip',delimiter='\t')
     mane_summary = mane_summary[mane_summary.MANE_status == "MANE Select"]
@@ -148,6 +167,8 @@ def read_steps(*args, **kwargs):
     ensembl = read_gzip_fasta(kwargs.get("ensembl_fasta"))
     # 849254 variants, 2747 genes
     gnomad_proteins = process_gnomad(gnomad_sample, ensembl)
-
+    # Keep only pathogenic and benign
+    clinvar_variant_summary = clinvar_variant_summary[clinvar_variant_summary.is_pathogenic | clinvar_variant_summary.is_benign]
     clinvar_proteins = process_clinvar(clinvar_variant_summary,mane_summary,mane_records,disease_genes)
+    # remove_clinvar_pathogenic_and_benign_from_gnomad(clinvar_proteins, gnomad_proteins)
     return clinvar_proteins, gnomad_proteins

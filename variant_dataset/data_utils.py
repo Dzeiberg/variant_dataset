@@ -47,6 +47,30 @@ class Protein(object):
     def sequence_hash(self):
         return self.get_md5_hash(self.sequence)
 
+    def read_feature_representations(self,mat):
+        assert mat['seq_hash'].item() == self.sequence_hash
+        feature_sub_order = {s.strip() : i for i,s in enumerate(mat['substitutions'].ravel())}
+        for substitution_str,variant in self.variants:
+            try:
+                feature_vec = mat['features'][feature_sub_order[substitution_str]].ravel()
+            except KeyError as e:
+                logging.warning(f"Skipping variant {substitution_str} for protein {self.id}\n{self}\n: {e}")
+                continue
+            variant.add_feature_vec(feature_vec)
+
+    def get_feature_representations(self,missing_features='error',dim=1345):
+        feature_vecs = []
+        for variant in self.variants.values():
+            try:
+                feature_vecs.append(variant.get_feature_vec())
+            except ValueError as e:
+                if missing_features == 'error':
+                    raise e
+                elif missing_features == 'zero-fill':
+                    feature_vecs.append(np.zeros((1,dim)))
+        return np.array(feature_vecs)
+
+
 class Variant(object):
     def __init__(self, protein : Protein, aa_ref : str, aa_pos : int, aa_alt : str):
         self.protein = protein
