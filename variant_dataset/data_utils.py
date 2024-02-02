@@ -4,6 +4,7 @@ from tqdm import tqdm
 import logging
 import numpy as np
 from Bio.PDB.Polypeptide import protein_letters_3to1
+from scipy.io import loadmat,savemat
 
 class Protein(object):
     def __init__(self, id, sequence):
@@ -220,3 +221,55 @@ class Dataset:
     @property
     def substitution_strs(self):
         return np.array([v.substitution_str for v in self.variants])
+
+
+class FeatureSet:
+    def __init__(self,filepath=None,sequence=None,substitutions=None,features=None):
+        if filepath is not None:
+            self.init_from_filepath(filepath)
+        elif sequence is not None and substitutions is not None and features is not None:
+            self.sequence = sequence
+            self.sequence_hash = Protein.get_md5_hash(sequence)
+            self.substitution_set = set(substitutions)
+            self.substitution_index = {s : i for i,s in enumerate(substitutions)}
+            self.features = features
+
+    def init_from_filepath(self,filepath):
+        self.filepath = filepath
+        mat = loadmat(filepath)
+        self.sequence = mat['sequence'].item() # str
+        self.sequence_hash = mat['seq_hash'].item() # str
+        substitutions_ = [m.strip() for m in mat['substitutions'].ravel()]
+        self.substitution_set = set(substitutions_)
+        self.substitution_index = {s : i for i,s in enumerate(substitutions_)}
+        self.features = mat['features']
+
+    def save(self,filepath):
+        sub_list = [tup[0] for tup in sorted(list(self.substitution_index.items()),key=lambda x: x[1])]
+        savemat(filepath,{'sequence':np.array(self.sequence),'seq_hash':np.array(self.sequence_hash),'substitutions':np.array(sub_list),'features':self.features})
+
+    def __eq__(self,other):
+        return self.sequence_hash == other.sequence_hash and np.array_equal(self.features,other.features) and self.substitution_index == other.substitution_index and self.sequence == other.sequence
+
+    def update_from_job(self,features, substitutions):
+        new_mutation_indices = [i for i,sub in enumerate(substitutions) if sub not in self.substitution_set]
+        self.features = np.concatenate([self.features, features[new_mutation_indices]],axis=0)
+        for index in new_mutation_indices:
+            self.substitution_index[substitutions[index]] = len(self.substitution_index)
+        self.substitution_set.update(substitutions)
+
+class JobProcessor:
+    def __init__(self,feature_sets):
+        self.feature_sets = {fs.sequence_hash : fs for fs in feature_sets}
+
+    def process_job(self,job_dir):
+        features = loadmat(job_dir / "output.txt.feats_1.mat")['feats']
+        substitutions = loadmat(job_dir / "output.txt.substitutions.mat")['substitutions']
+        substitutions = [a.item().strip() for a in subs['substitutions'].item().ravel()]
+        sequence = loadmat(job_dir / 'output.txt.sequences.mat')['sequences'].item().item()
+        sequence_hash = Protein.get_md5_hash(sequence)
+        if sequence_hash not in self.feature_sets:
+            fs = FeatureSet(sequence=sequence,substitutions=substitutions,features=features)
+            self.feature_sets[fs.sequence_hash] = fs
+        else:
+            self.feature_sets[sequence_hash].update_from_job(features,substitutions)
