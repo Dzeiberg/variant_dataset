@@ -51,7 +51,7 @@ class Protein(object):
     def read_feature_representations(self,mat):
         assert mat['seq_hash'].item() == self.sequence_hash
         feature_sub_order = {s.strip() : i for i,s in enumerate(mat['substitutions'].ravel())}
-        for substitution_str,variant in self.variants:
+        for substitution_str,variant in self.variants.items():
             try:
                 feature_vec = mat['features'][feature_sub_order[substitution_str]].ravel()
             except KeyError as e:

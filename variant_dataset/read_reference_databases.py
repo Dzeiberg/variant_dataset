@@ -55,9 +55,9 @@ def process_gnomad(df, ensembl_records):
 
 
 def read_gnomad_vcf_files(*args,**kwargs):
-    gnomad_exomes = kwargs.get("gnomad_exomes")
-    gnomad_genomes = kwargs.get("gnomad_genomes")
-    header_file = kwargs.get("gnomad_header_file")
+    gnomad_exomes = kwargs.get("gnomad_exomes",'/mnt/i/bio/gnomad/v2_liftover/gnomad.exomes.r2.1.1.sites.missense.vcf.gz')
+    gnomad_genomes = kwargs.get("gnomad_genomes",'/mnt/i/bio/gnomad/v2_liftover/gnomad.genomes.r2.1.1.sites.missense.vcf.gz')
+    header_file = kwargs.get("gnomad_header_file",'/mnt/i/bio/gnomad/v2_liftover/header.txt')
 
     with open(header_file) as f:
         columns = f.read().strip().split(",")
@@ -164,7 +164,7 @@ def read_steps(*args, **kwargs):
     gnomad_sample = gnomad_genomes_and_exomes[(gnomad_genomes_and_exomes.FILTER == 'PASS') & \
                                               (gnomad_genomes_and_exomes.AF < 0.01) & \
                                                 (gnomad_genomes_and_exomes.Ensembl_protein_id.isin(disease_genes.Ensembl_prot))]
-    ensembl = read_gzip_fasta(kwargs.get("ensembl_fasta"))
+    ensembl = read_gzip_fasta(kwargs.get("ensembl_fasta",'/mnt/i/bio/ensembl/Homo_sapiens.GRCh38.pep.all.fa.gz'))
     # 849254 variants, 2747 genes
     gnomad_proteins = process_gnomad(gnomad_sample, ensembl)
     # Keep only pathogenic and benign
